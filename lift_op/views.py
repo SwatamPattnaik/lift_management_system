@@ -56,12 +56,13 @@ class LiftCall(APIView):
             Lift.objects.filter(id=closest_lift.id).update(door='open')
             return JsonResponse({'msg':'Lift already present.'},status=status.HTTP_200_OK)
         lift_requests = json.loads(closest_lift.requests)
-        lift_requests.append(requested_floor)
-        if (closest_lift.status=='going up' and requested_floor>closest_lift.destination) or (closest_lift.status=='going down' and requested_floor<closest_lift.destination) or closest_lift.status=='stop':
-            closest_lift = Lift.objects.create_or_update(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
-        if closest_lift.status=='stop':
-            lift_thread = threading.Thread(target=lift_control, args=(closest_lift,))
-            lift_thread.start()
+        if requested_floor not in lift_requests:
+            lift_requests.append(requested_floor)
+            if (closest_lift.status=='going up' and requested_floor>closest_lift.destination) or (closest_lift.status=='going down' and requested_floor<closest_lift.destination) or closest_lift.status=='stop':
+                closest_lift = Lift.objects.create_or_update(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+            if closest_lift.status=='stop':
+                lift_thread = threading.Thread(target=lift_control, args=(closest_lift,))
+                lift_thread.start()
         return JsonResponse({'msg':'Lift requested successfully.'},status=status.HTTP_200_OK)
     
 class LiftData(APIView):
@@ -77,13 +78,26 @@ class LiftData(APIView):
             lift_requests = lift.lift_requests
             return JsonResponse({'msg':'Success','lift_requests':lift_requests},status=status.HTTP_200_OK)
         elif data_type == 'status':
-            status = {
+            lift_status = {
                 'current_floor':lift.current_floor,
                 'destination_floor':lift.destination_floor,
                 'status':lift.status,
                 'door_status':lift.door
             }
-            return JsonResponse(status,status=status.HTTP_200_OK)   
+            return JsonResponse(lift_status,status=status.HTTP_200_OK)   
+        elif data_type == 'next_destination':
+            current_floor = lift.current_floor
+            lift_requests = json.loads(lift.lift_requests)
+            lift_status = lift.status
+            if lift_status == 'going up':
+                destination = min(filter(lambda x:x>current_floor,lift_requests))
+            elif lift_status == 'going down':
+                destination = max(filter(lambda x:x<current_floor,lift_requests))
+            else:
+                return JsonResponse({'msg':'Invalid request'},status=status.HTTP_200_OK)
+            return JsonResponse({'next_destination':destination},status=status.HTTP_200_OK)
+        else:
+            return JsonResponse({'msg':'Invalid request'},status=status.HTTP_200_OK)
     
 class FloorRequest(APIView):
 
@@ -97,14 +111,15 @@ class FloorRequest(APIView):
         if lift.current_floor == requested_floor:
             return JsonResponse({'msg':'Requesting current floor.Request not registered.'},status=status.HTTP_200_OK)
         lift_requests = json.loads(lift.requests)
-        lift_requests.append(requested_floor)
-        if (lift.status=='going up' and requested_floor>lift.destination) or (lift.status=='going down' and requested_floor<lift.destination) or lift.status=='stop':
-            lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
-        else:
-            lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests)})
-        if lift.status=='stop':
-            lift_thread = threading.Thread(target=lift_control, args=(lift,))
-            lift_thread.start()
+        if requested_floor not in lift_requests:
+            lift_requests.append(requested_floor)
+            if (lift.status=='going up' and requested_floor>lift.destination) or (lift.status=='going down' and requested_floor<lift.destination) or lift.status=='stop':
+                lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+            else:
+                lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests)})
+            if lift.status=='stop':
+                lift_thread = threading.Thread(target=lift_control, args=(lift,))
+                lift_thread.start()
         return JsonResponse({'msg':'You will reach your destination soon.'},status=status.HTTP_200_OK)
 
 class LiftMaintenance(APIView):
@@ -123,12 +138,14 @@ class LiftMaintenance(APIView):
         if not lift_id or not status:
             return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST) 
         if msg == 'In maintenance':
-            data={'status':'maintenance'}
+            data={'status':'maintenance','current_floor':0,'destination':0,'requests':'[]','door':'close'}
         elif msg == 'Maintenance completed':
-            data={'status':'stop'}
+            data={'status':'stop','current_floor':0,'destination':0,'requests':'[]','door':'close'}
         else:
             return JsonResponse({'msg':'Enter proper message'},status=status.HTTP_200_OK)
         lift = Lift.objects.get(id=lift_id)
+        if lift.status == 'going up' or lift.status=='going down':
+            return JsonResponse({'msg':'Lift in motion'},status=status.HTTP_200_OK)
         lift_serializer = MaintenanceLiftSerializer(lift,data=data)
         if lift_serializer.is_valid():
             lift_serializer.save()
