@@ -72,7 +72,7 @@ class LiftCall(APIView):
             data = JSONParser().parse(request)
             building_id = data.get('building_id',None)
             requested_floor = data.get('requested_floor',None)
-            if not building_id or not requested_floor:
+            if not building_id or requested_floor==None:
                 return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
             if requested_floor<0 or requested_floor>=Building.objects.get(id=building_id).floors:
                 return JsonResponse({'msg':'Invalid floor number.'},status=status.HTTP_400_BAD_REQUEST)
@@ -83,7 +83,7 @@ class LiftCall(APIView):
             closest_lift,lift_distance = get_closest_lift(lifts,requested_floor)
             if lift_distance == 0:
                 Lift.objects.filter(id=closest_lift.id).update(door='open')
-                return JsonResponse({'msg':'Lift already present.'},status=status.HTTP_200_OK)
+                return JsonResponse({'msg':f'Lift {closest_lift.id} already present.'},status=status.HTTP_200_OK)
             lift_requests = json.loads(closest_lift.requests)
             if requested_floor not in lift_requests:
                 lift_requests.append(requested_floor)
@@ -169,7 +169,7 @@ class FloorRequest(APIView):
             building_id = data['building_id']
             lift_id = data['lift_id']
             requested_floor = data.get('requested_floor',None)
-            if not lift_id or not requested_floor or not building_id:
+            if not lift_id or requested_floor==None or not building_id:
                 return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
             if requested_floor<0 or requested_floor>=Building.objects.get(id=building_id).floors:
                 return JsonResponse({'msg':'Invalid floor number.'},status=status.HTTP_400_BAD_REQUEST)
@@ -212,7 +212,7 @@ class LiftMaintenance(APIView):
         
     def post(self,request):
         '''
-        Function to set status of lift in case of maintenance and end of maintenance.
+        Function to set status of lift in case of maintenance or end of maintenance.
         Body format:
         {
             "lift_id":int,

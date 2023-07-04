@@ -23,7 +23,8 @@ def get_closest_lift(lifts,requested_floor):
             lift_distance = 0
         if lift_distance<min_distance:
                     closest_lift = lift
-    
+                    min_distance = lift_distance
+        print(lift_distance,lift.id,closest_lift)
     return closest_lift,lift_distance
 
 def lift_control(lift):
