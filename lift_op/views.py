@@ -16,6 +16,22 @@ from lift_op.helpers import *
 class LiftInitialization(APIView):
 
     def post(self,request):
+        '''Function to initialize number of lifts and number of floors in a building
+        Body format:
+        {
+            "building":{
+                "name":"str",
+                "floors":int,
+                "lifts":int
+            }
+        }
+        Return data format:
+        {
+            "msg": "Lifts initialized successfully.",
+            "building_id": int,
+            "lift_ids": [Array]
+        }
+        '''
         try:
             data = JSONParser().parse(request)
             building_info = data.pop('building')
@@ -42,12 +58,24 @@ class LiftInitialization(APIView):
 class LiftCall(APIView):
 
     def post(self,request):
+        '''
+        Function to call lift to a floor.
+        Body format:
+        {
+            "building_id":int,
+            "requested_floor":int
+        }
+        Return data format:
+        {'msg':'Lift requested successfully.'}
+        '''
         try:
             data = JSONParser().parse(request)
             building_id = data.get('building_id',None)
             requested_floor = data.get('requested_floor',None)
             if not building_id or not requested_floor:
                 return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
+            if requested_floor<0 or requested_floor>=Building.objects.get(id=building_id).floors:
+                return JsonResponse({'msg':'Invalid floor number.'},status=status.HTTP_400_BAD_REQUEST)
             lifts = Lift.objects.filter(building_id=building_id).exclude(status='maintenance')
             if len(lifts) == 0:
                 return JsonResponse({'msg':'No lifts available.'},status=status.HTTP_200_OK)
@@ -60,7 +88,9 @@ class LiftCall(APIView):
             if requested_floor not in lift_requests:
                 lift_requests.append(requested_floor)
                 if (closest_lift.status=='going up' and requested_floor>closest_lift.destination) or (closest_lift.status=='going down' and requested_floor<closest_lift.destination) or closest_lift.status=='stop':
-                    closest_lift = Lift.objects.create_or_update(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+                    closest_lift = Lift.objects.update_or_create(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})[0]
+                else:
+                    closest_lift = Lift.objects.update_or_create(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests)})[0]
                 if closest_lift.status=='stop':
                     lift_thread = threading.Thread(target=lift_control, args=(closest_lift,))
                     lift_thread.start()
@@ -71,6 +101,21 @@ class LiftCall(APIView):
 class LiftData(APIView):
 
     def get(self,request):
+        '''
+        Function to get data about specific lift.
+        Query params format:
+        lift_id=int
+        data_type="str",Possible values: requests,status,next_destination
+        Return data format:
+        1.{'lift_requests':[Array]}
+        2.{
+            'current_floor':int,
+            'destination_floor':int,
+            'status':'str',Possible values:stop,going up,going down,maintenance
+            'door_status':'str',Possible values:open,close
+        }
+        3.{'next_destination':int}
+        '''
         try:
             data = request.query_params
             lift_id = data.get('lift_id',None)
@@ -80,11 +125,11 @@ class LiftData(APIView):
             lift = Lift.objects.get(id=lift_id)
             if data_type == 'requests':
                 lift_requests = lift.lift_requests
-                return JsonResponse({'msg':'Success','lift_requests':lift_requests},status=status.HTTP_200_OK)
+                return JsonResponse({'lift_requests':lift_requests},status=status.HTTP_200_OK)
             elif data_type == 'status':
                 lift_status = {
                     'current_floor':lift.current_floor,
-                    'destination_floor':lift.destination_floor,
+                    'destination_floor':lift.destination,
                     'status':lift.status,
                     'door_status':lift.door
                 }
@@ -108,12 +153,26 @@ class LiftData(APIView):
 class FloorRequest(APIView):
 
     def post(self,request):
+        '''
+        Function to request destination floor for passenger from inside lift.
+        Body format:
+        {
+            "building_id":int,
+            "lift_id":int,
+            "requested_floor":int
+        }
+        Return data format:
+        {'msg':'You will reach your destination soon.'}
+        '''
         try:
             data = JSONParser().parse(request)
+            building_id = data['building_id']
             lift_id = data['lift_id']
             requested_floor = data.get('requested_floor',None)
-            if not lift_id or not requested_floor:
+            if not lift_id or not requested_floor or not building_id:
                 return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
+            if requested_floor<0 or requested_floor>=Building.objects.get(id=building_id).floors:
+                return JsonResponse({'msg':'Invalid floor number.'},status=status.HTTP_400_BAD_REQUEST)
             lift = Lift.objects.get(id=lift_id)
             if lift.current_floor == requested_floor:
                 return JsonResponse({'msg':'Requesting current floor.Request not registered.'},status=status.HTTP_200_OK)
@@ -121,9 +180,9 @@ class FloorRequest(APIView):
             if requested_floor not in lift_requests:
                 lift_requests.append(requested_floor)
                 if (lift.status=='going up' and requested_floor>lift.destination) or (lift.status=='going down' and requested_floor<lift.destination) or lift.status=='stop':
-                    lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})[0]
                 else:
-                    lift = Lift.objects.create_or_update(id=lift.id,defaults={'requests':json.dumps(lift_requests)})
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'requests':json.dumps(lift_requests)})[0]
                 if lift.status=='stop':
                     lift_thread = threading.Thread(target=lift_control, args=(lift,))
                     lift_thread.start()
@@ -134,17 +193,34 @@ class FloorRequest(APIView):
 class LiftMaintenance(APIView):
 
     def get(self,request):
+        '''
+        Function to fetch all lifts under maintenance in a building.
+        Query params format:
+        building_id=str
+        Return data format:
+        [Array]
+        '''
         try:
             building_id = request.query_params.get('building_id',None)
             if not building_id:
                 return JsonResponse({'msg':'Building id missing.'},status=status.HTTP_400_BAD_REQUEST)
             lifts = Lift.objects.filter(status='maintenance')
             lifts_serializer = MaintenanceLiftSerializer(lifts,many=True)
-            return JsonResponse(lifts_serializer.data,status=status.HTTP_200_OK)
+            return JsonResponse(lifts_serializer.data,status=status.HTTP_200_OK,safe=False)
         except:
             return JsonResponse({'msg':'Something went wrong.'},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     def post(self,request):
+        '''
+        Function to set status of lift in case of maintenance and end of maintenance.
+        Body format:
+        {
+            "lift_id":int,
+            "msg":"str",Possible values:In maintenance,Maintenance completed
+        }
+        Return data format:
+        {'msg':'Lift status updated successfully'}
+        '''
         try:
             data = JSONParser().parse(request)
             lift_id = data.get('lift_id',None)

@@ -2,6 +2,9 @@ from lift_op.models import *
 import time,json
 
 def get_closest_lift(lifts,requested_floor):
+    '''
+    Function to find closest lift to requested floor.
+    '''
     closest_lift = ''
     min_distance = float('inf')
     for lift in lifts:
@@ -18,12 +21,15 @@ def get_closest_lift(lifts,requested_floor):
                 lift_distance = lift.current_floor+requested_floor-2*lift.destination
         else:
             lift_distance = 0
-
         if lift_distance<min_distance:
                     closest_lift = lift
+    
     return closest_lift,lift_distance
 
 def lift_control(lift):
+    '''
+    Function to control movement of lifts.
+    '''
     while True:
         if lift.destination>lift.current_floor:
             change = 1
@@ -36,16 +42,16 @@ def lift_control(lift):
         lift_requests = json.loads(lift.requests)
         if lift.current_floor in lift_requests:
             lift_requests.remove(lift.current_floor)
-            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'open'})[0]
+            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'open','requests':json.dumps(lift_requests)})[0]
             time.sleep(5)
             lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'close'})[0]
-        if lift.current_floor == lift.destination_floor:
+        if lift.current_floor == lift.destination:
             lift_requests = json.loads(lift.requests)
             if len(lift_requests)!=0:
                 if lift.status=='going up':
-                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':min(lift_requests)})[0]
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination':min(lift_requests)})[0]
                 else:
-                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':max(lift_requests)})[0]
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination':max(lift_requests)})[0]
             else:
                 Lift.objects.update_or_create(id=lift.id,defaults={'status':'stop'})
                 break

@@ -4,6 +4,9 @@ from lift_op.models import *
 from rest_framework.response import Response
 
 class BuildingSerializer(serializers.ModelSerializer):
+    '''
+    Serializer to create building object.
+    '''
     class Meta:
         model = Building
         fields = '__all__'
@@ -13,7 +16,9 @@ class BuildingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class LiftSerializer(serializers.ModelSerializer):
-
+    '''
+    Serializer to initialize Lift objects.
+    '''
     building = serializers.PrimaryKeyRelatedField(
         queryset=Building.objects.all()
     )
@@ -23,6 +28,9 @@ class LiftSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']          
 
 class MaintenanceLiftSerializer(serializers.ModelSerializer):
+    '''
+    Serializer to update maintenance status of lifts.
+    '''
     class Meta:
         model = Lift
         fields = '__all__'
