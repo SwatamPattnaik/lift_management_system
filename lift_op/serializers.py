@@ -21,3 +21,8 @@ class LiftSerializer(serializers.ModelSerializer):
         model = Lift
         fields = ['building'] 
         read_only_fields = ['id']          
+
+class MaintenanceLiftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Lift
+        fields = '__all__'

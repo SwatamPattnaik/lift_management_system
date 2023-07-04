@@ -47,7 +47,7 @@ class LiftCall(APIView):
         requested_floor = data.get('requested_floor',None)
         if not building_id or not requested_floor:
             return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
-        lifts = Lift.objects.filter(building_id=building_id).exclude(status='maintainance')
+        lifts = Lift.objects.filter(building_id=building_id).exclude(status='maintenance')
         if len(lifts) == 0:
             return JsonResponse({'msg':'No lifts available.'},status=status.HTTP_200_OK)
         
@@ -67,9 +67,11 @@ class LiftCall(APIView):
 class LiftData(APIView):
 
     def get(self,request):
-        data = JSONParser().parse(request)
-        lift_id = data['lift_id']
-        data_type = data['data_type']
+        data = request.query_params
+        lift_id = data.get('lift_id',None)
+        data_type = data.get('data_type',None)
+        if not lift_id or not data_type:
+            return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
         lift = Lift.objects.get(id=lift_id)
         if data_type == 'requests':
             lift_requests = lift.lift_requests
@@ -105,4 +107,29 @@ class FloorRequest(APIView):
             lift_thread.start()
         return JsonResponse({'msg':'You will reach your destination soon.'},status=status.HTTP_200_OK)
 
-            
+class LiftMaintenance(APIView):
+
+    def get(self,request):
+        building_id = request.query_params.get('building_id',None)
+        if not building_id:
+            return JsonResponse({'msg':'Building id missing.'},status=status.HTTP_400_BAD_REQUEST)
+        lifts = Lift.objects.filter(status='maintenance')
+        lifts_serializer = MaintenanceLiftSerializer(lifts,many=True)
+        return JsonResponse(lifts_serializer.data,status=status.HTTP_200_OK)
+
+    def post(self,request):
+        lift_id = request.query_params.get('lift_id',None)
+        msg = request.query_params.get('msg',None)
+        if not lift_id or not status:
+            return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST) 
+        if msg == 'In maintenance':
+            data={'status':'maintenance'}
+        elif msg == 'Maintenance completed':
+            data={'status':'stop'}
+        else:
+            return JsonResponse({'msg':'Enter proper message'},status=status.HTTP_200_OK)
+        lift = Lift.objects.get(id=lift_id)
+        lift_serializer = MaintenanceLiftSerializer(lift,data=data)
+        if lift_serializer.is_valid():
+            lift_serializer.save()
+            return JsonResponse({'msg':'Lift status updated successfully'})
