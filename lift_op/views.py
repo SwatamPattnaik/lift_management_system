@@ -1,4 +1,3 @@
-from django.shortcuts import render
 from lift_op.serializers import *
 from django.http.response import JsonResponse
 from rest_framework.parsers import JSONParser 
@@ -6,8 +5,6 @@ from lift_op.models import *
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework import viewsets
-from django.http.response import JsonResponse
-from rest_framework.parsers import JSONParser 
 import threading,json
 from lift_op.helpers import *
 
