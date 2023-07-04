@@ -32,20 +32,20 @@ def lift_control(lift):
             change = -1
             status = 'going down'
         time.sleep(5)
-        lift = Lift.objects.update_or_create(id=lift.id,defaults={'current_floor':lift.current_floor+change,'door':'close','status':status})
+        lift = Lift.objects.update_or_create(id=lift.id,defaults={'current_floor':lift.current_floor+change,'door':'close','status':status})[0]
         lift_requests = json.loads(lift.requests)
         if lift.current_floor in lift_requests:
             lift_requests.remove(lift.current_floor)
-            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'open'})
+            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'open'})[0]
             time.sleep(5)
-            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'close'})
+            lift = Lift.objects.update_or_create(id=lift.id,defaults={'door':'close'})[0]
         if lift.current_floor == lift.destination_floor:
             lift_requests = json.loads(lift.requests)
             if len(lift_requests)!=0:
                 if lift.status=='going up':
-                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':min(lift_requests)})
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':min(lift_requests)})[0]
                 else:
-                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':max(lift_requests)})
+                    lift = Lift.objects.update_or_create(id=lift.id,defaults={'destination_floor':max(lift_requests)})[0]
             else:
                 Lift.objects.update_or_create(id=lift.id,defaults={'status':'stop'})
                 break
