@@ -13,10 +13,7 @@ class BuildingSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class LiftSerializer(serializers.ModelSerializer):
-    # current_floor = serializers.IntegerField(default=0, initial=0)
-    # destination = serializers.IntegerField(default=0, initial=0)
-    # status = serializers.CharField(default='stop', initial='stop')
-    # requests = serializers.CharField(default='[]', initial='[]')
+
     building = serializers.PrimaryKeyRelatedField(
         queryset=Building.objects.all()
     )

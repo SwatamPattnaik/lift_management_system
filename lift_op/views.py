@@ -8,6 +8,8 @@ from rest_framework.views import APIView
 from rest_framework import viewsets
 from django.http.response import JsonResponse
 from rest_framework.parsers import JSONParser 
+import threading,json
+from lift_op.helpers import *
 
 # Create your views here.
 
@@ -24,14 +26,62 @@ class LiftInitialization(APIView):
             else:
                 return JsonResponse({'msg':'Invalid building data.'},status=status.HTTP_400_BAD_REQUEST)
             
-            lift_serializer = LiftSerializer(data=[data for i in range(building_info['floors'])],many=True)
+            lift_serializer = LiftSerializer(data=[data for i in range(building_info['lifts'])],many=True)
+            
             if lift_serializer.is_valid():
-                lift_serializer.save()
-                return JsonResponse({'msg':'Lifts initialized successfully.'},status=status.HTTP_201_CREATED,safe=False)
+                lift_instance = lift_serializer.save()
+                lift_ids = [instance.id for instance in lift_instance]
+                return JsonResponse({'msg':'Lifts initialized successfully.','building_id':building_instance.id,'lift_ids':lift_ids},status=status.HTTP_201_CREATED,safe=False)
             else:
                 return JsonResponse({'msg':'Invalid data.'},status=status.HTTP_400_BAD_REQUEST)
         except:
             return JsonResponse({'msg':'Something went wrong.'},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
+    
+class LiftCall(APIView):
+
+    def post(self,request):
+        data = JSONParser().parse(request)
+        building_id = data.get('building_id',None)
+        requested_floor = data.get('requested_floor',None)
+        if not building_id or not requested_floor:
+            return JsonResponse({'msg':'Please enter all data.'},status=status.HTTP_400_BAD_REQUEST)
+        lifts = Lift.objects.filter(building_id=building_id).exclude(status='maintainance')
+        if len(lifts) == 0:
+            return JsonResponse({'msg':'No lifts available.'},status=status.HTTP_200_OK)
+        
+        closest_lift,lift_distance = get_closest_lift(lifts,requested_floor)
+        if lift_distance == 0:
+            Lift.objects.filter(id=closest_lift.id).update(door='open')
+            return JsonResponse({'msg':'Lift already present.'},status=status.HTTP_200_OK)
+        lift_requests = json.loads(closest_lift.requests)
+        lift_requests.append(requested_floor)
+        if closest_lift.status=='going up' and requested_floor>closest_lift.destination:
+            closest_lift = Lift.objects.create_or_update(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+        elif closest_lift.status=='going down' and requested_floor<closest_lift.destination:
+            closest_lift = Lift.objects.create_or_update(id=closest_lift.id,defaults={'requests':json.dumps(lift_requests),'destination':requested_floor})
+        if closest_lift.status=='stop':
+            lift_thread = threading.Thread(target=lift_control, args=(closest_lift,))
+            lift_thread.start()
+        return JsonResponse({'msg':'Lift requested successfully.'},status=status.HTTP_200_OK)
+    
+class LiftData(APIView):
+
+    def get(self,request):
+        data = JSONParser().parse(request)
+        lift_id = data['lift_id']
+        data_type = data['data_type']
+        lift = Lift.objects.get(id=lift_id)
+        if data_type == 'requests':
+            lift_requests = lift.lift_requests
+            return JsonResponse({'msg':'Success','lift_requests':lift_requests},status=status.HTTP_200_OK)
+        elif data_type == 'status':
+            status = {
+                'current_floor':lift.current_floor,
+                'destination_floor':lift.destination_floor,
+                'status':lift.status,
+                'door_status':lift.door
+            }
+            return JsonResponse(status,status=status.HTTP_200_OK)   
     
